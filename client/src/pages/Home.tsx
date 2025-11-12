@@ -159,15 +159,18 @@ export default function Home() {
       // Configurar stream no elemento de vídeo
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute('autoplay', '');
+        videoRef.current.setAttribute('playsinline', '');
+        videoRef.current.muted = true;
+
+        // Ativar interface imediatamente
+        setIsCameraActive(true);
+        setIsDemoMode(false);
+        setError("");
 
         videoRef.current.onloadedmetadata = () => {
           videoRef.current
             ?.play()
-            .then(() => {
-              setIsCameraActive(true);
-              setIsDemoMode(false);
-              setError("");
-            })
             .catch((playErr) => {
               console.error("❌ Erro ao reproduzir vídeo:", playErr);
               setError(
@@ -347,7 +350,9 @@ export default function Home() {
                   <video
                     ref={videoRef}
                     className="w-full h-full object-cover"
+                    autoPlay
                     playsInline
+                    muted
                   />
                   <canvas ref={canvasRef} className="hidden" />
 
