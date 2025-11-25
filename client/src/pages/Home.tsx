@@ -168,36 +168,60 @@ export default function Home() {
         console.log("📹 Configurando elemento de vídeo...");
         const video = videoRef.current;
         
-        video.srcObject = stream;
+        // Configurar propriedades ANTES de definir srcObject
         video.muted = true;
         video.playsInline = true;
         video.autoplay = true;
+        
+        // Também via setAttribute para garantir compatibilidade
+        video.setAttribute('autoplay', '');
+        video.setAttribute('playsinline', '');
+        video.setAttribute('muted', '');
+        
+        // Agora definir o stream
+        video.srcObject = stream;
 
-        // Ativar interface imediatamente para mostrar o container
-        setIsCameraActive(true);
-        setIsDemoMode(false);
-        setError("");
-
-        // Aguardar metadados carregarem
+        // Aguardar metadados carregarem ANTES de ativar interface
         video.onloadedmetadata = async () => {
           try {
             console.log("📊 Metadados carregados. Dimensões:", video.videoWidth, "x", video.videoHeight);
+            
+            // Tentar reproduzir imediatamente
             await video.play();
             console.log("✅ Vídeo reproduzindo com sucesso");
+            
+            // AGORA SIM ativar interface (vídeo está reproduzindo)
+            setIsCameraActive(true);
+            setIsDemoMode(false);
+            setError("");
           } catch (playErr) {
             console.error("❌ Erro ao reproduzir vídeo:", playErr);
-            setError(
-              "Erro ao iniciar visualização da câmera. Tente o modo demo."
-            );
+            
+            // Tentar novamente após um delay
+            setTimeout(async () => {
+              try {
+                await video.play();
+                console.log("✅ Vídeo reproduzindo após retry");
+                
+                // Ativar interface após retry bem-sucedido
+                setIsCameraActive(true);
+                setIsDemoMode(false);
+                setError("");
+              } catch (e) {
+                console.error("❌ Falha no retry:", e);
+                setError("Erro ao iniciar visualização da câmera. Tente o modo demo.");
+              }
+            }, 100);
           }
         };
 
-        // Fallback: tentar reproduzir após um pequeno delay
+        // Fallback adicional: tentar reproduzir após um delay maior
         setTimeout(async () => {
           try {
             if (video.paused) {
               console.log("⚠️ Vídeo pausado, tentando reproduzir...");
               await video.play();
+              console.log("✅ Vídeo reproduzindo via fallback");
             }
           } catch (e) {
             console.error("Erro no fallback de reprodução:", e);
