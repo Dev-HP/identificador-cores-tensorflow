@@ -31,6 +31,16 @@ export default function Home() {
   const [currentRGB, setCurrentRGB] = useState({ r: 0, g: 0, b: 0 });
   const [prediction, setPrediction] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+
+  // Função para adicionar log visual
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logMessage = `[${timestamp}] ${message}`;
+    console.log(logMessage);
+    setDebugLogs(prev => [...prev.slice(-20), logMessage]); // Manter últimos 20 logs
+  };
 
   // Treinar modelo de rede neural
   useEffect(() => {
@@ -41,7 +51,7 @@ export default function Home() {
         // Configurar backend CPU explicitamente para evitar erros de WebGL
         await tf.setBackend('cpu');
         await tf.ready();
-        console.log('✅ TensorFlow backend configurado:', tf.getBackend());
+        addLog('✅ TensorFlow backend configurado: ' + tf.getBackend());
 
         // Preparar dados de treinamento
         const inputs = COLOR_DATASET.map((color) => [
@@ -100,12 +110,14 @@ export default function Home() {
   async function startCamera() {
     try {
       setError("");
-      console.log("🎥 Iniciando processo de acesso à câmera...");
+      setDebugLogs([]); // Limpar logs anteriores
+      addLog("🎥 Iniciando processo de acesso à câmera...");
 
       // Verificar se o navegador suporta getUserMedia
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Seu navegador não suporta acesso à câmera");
       }
+      addLog("✅ Navegador suporta getUserMedia");
 
       // Configurações em ordem de prioridade (melhor para pior)
       const videoConfigs = [
@@ -144,15 +156,15 @@ export default function Home() {
       // Tentar cada configuração em sequência
       for (const config of videoConfigs) {
         try {
-          console.log(`🎥 Tentando acesso à câmera: ${config.name}...`);
+          addLog(`🎥 Tentando: ${config.name}...`);
           stream = await navigator.mediaDevices.getUserMedia({
             video: config.constraints
           });
-          console.log(`✅ Câmera acessada com sucesso: ${config.name}`);
-          console.log("Stream tracks:", stream.getTracks());
+          addLog(`✅ Câmera OK: ${config.name}`);
+          addLog(`📹 Tracks: ${stream.getTracks().length}`);
           break; // Sucesso, sair do loop
         } catch (err) {
-          console.warn(`⚠️ Falha com ${config.name}:`, (err as Error).name);
+          addLog(`⚠️ Falha ${config.name}: ${(err as Error).name}`);
           lastError = err as Error;
           // Continuar para próxima configuração
         }
@@ -165,7 +177,7 @@ export default function Home() {
 
       // Configurar stream no elemento de vídeo
       if (videoRef.current) {
-        console.log("📹 Configurando elemento de vídeo...");
+        addLog("📹 Configurando elemento de vídeo...");
         const video = videoRef.current;
         
         // Configurar propriedades ANTES de definir srcObject
@@ -178,55 +190,77 @@ export default function Home() {
         video.setAttribute('playsinline', '');
         video.setAttribute('muted', '');
         
+        // Função auxiliar para ativar a câmera quando estiver pronta
+        const activateCamera = async () => {
+          try {
+            // Verificar se o vídeo tem dimensões válidas
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+              addLog(`📊 Vídeo pronto: ${video.videoWidth}x${video.videoHeight}`);
+              
+              // Garantir que está reproduzindo
+              if (video.paused) {
+                await video.play();
+                addLog("▶️ Vídeo iniciado");
+              }
+              
+              addLog("✅ Câmera ativada com sucesso!");
+              
+              // Ativar interface
+              setIsCameraActive(true);
+              setIsDemoMode(false);
+              setError("");
+              return true;
+            }
+            addLog(`⚠️ Dimensões inválidas: ${video.videoWidth}x${video.videoHeight}`);
+            return false;
+          } catch (err) {
+            addLog("❌ Erro ao ativar: " + (err as Error).message);
+            return false;
+          }
+        };
+        
         // Agora definir o stream
         video.srcObject = stream;
 
-        // Aguardar metadados carregarem ANTES de ativar interface
+        // Estratégia 1: Tentar via onloadedmetadata
         video.onloadedmetadata = async () => {
-          try {
-            console.log("📊 Metadados carregados. Dimensões:", video.videoWidth, "x", video.videoHeight);
-            
-            // Tentar reproduzir imediatamente
-            await video.play();
-            console.log("✅ Vídeo reproduzindo com sucesso");
-            
-            // AGORA SIM ativar interface (vídeo está reproduzindo)
-            setIsCameraActive(true);
-            setIsDemoMode(false);
-            setError("");
-          } catch (playErr) {
-            console.error("❌ Erro ao reproduzir vídeo:", playErr);
-            
-            // Tentar novamente após um delay
-            setTimeout(async () => {
-              try {
-                await video.play();
-                console.log("✅ Vídeo reproduzindo após retry");
-                
-                // Ativar interface após retry bem-sucedido
-                setIsCameraActive(true);
-                setIsDemoMode(false);
-                setError("");
-              } catch (e) {
-                console.error("❌ Falha no retry:", e);
-                setError("Erro ao iniciar visualização da câmera. Tente o modo demo.");
-              }
-            }, 100);
-          }
+          addLog("📊 Evento onloadedmetadata disparado");
+          await activateCamera();
         };
 
-        // Fallback adicional: tentar reproduzir após um delay maior
-        setTimeout(async () => {
-          try {
-            if (video.paused) {
-              console.log("⚠️ Vídeo pausado, tentando reproduzir...");
-              await video.play();
-              console.log("✅ Vídeo reproduzindo via fallback");
-            }
-          } catch (e) {
-            console.error("Erro no fallback de reprodução:", e);
+        // Estratégia 2: Polling para verificar se o vídeo está pronto
+        // (útil quando onloadedmetadata não dispara)
+        let attempts = 0;
+        const maxAttempts = 20; // 2 segundos no máximo
+        addLog("🔄 Iniciando polling...");
+        const checkVideoReady = setInterval(async () => {
+          attempts++;
+          
+          if (video.readyState >= 2 && video.videoWidth > 0) {
+            // readyState >= 2 significa HAVE_CURRENT_DATA ou melhor
+            addLog(`✅ Pronto via polling (tent. ${attempts})`);
+            clearInterval(checkVideoReady);
+            await activateCamera();
+          } else if (attempts >= maxAttempts) {
+            addLog("⚠️ Timeout no polling");
+            clearInterval(checkVideoReady);
+            setError("Câmera conectada mas sem vídeo. Tente recarregar ou use o modo demo.");
+          } else if (attempts % 5 === 0) {
+            addLog(`🔄 Polling... tent. ${attempts} (state: ${video.readyState})`);
           }
-        }, 500);
+        }, 100);
+
+        // Estratégia 3: Fallback final após 3 segundos
+        setTimeout(async () => {
+          if (!isCameraActive && video.srcObject) {
+            addLog("⚠️ Fallback final: forçando ativação");
+            const success = await activateCamera();
+            if (!success) {
+              addLog("❌ Fallback falhou");
+              setError("Erro ao iniciar visualização da câmera. Tente o modo demo.");
+            }
+          }
+        }, 3000);
       }
     } catch (err) {
       const error = err as Error;
@@ -290,29 +324,48 @@ export default function Home() {
 
         if (!ctx) return;
 
-        // Desenhar frame atual
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
+        // CORREÇÃO CRÍTICA: Verificar se o vídeo tem dimensões válidas
+        if (video.videoWidth === 0 || video.videoHeight === 0) {
+          return;
+        }
 
-        // Capturar pixel do centro
-        const centerX = Math.floor(canvas.width / 2);
-        const centerY = Math.floor(canvas.height / 2);
-        const imageData = ctx.getImageData(centerX, centerY, 1, 1);
-        const data = Array.from(imageData.data);
-        const [r, g, b] = data;
+        // Verificar se o vídeo está pronto para ser desenhado
+        if (video.readyState < 2) {
+          return;
+        }
 
-        setCurrentRGB({ r, g, b });
+        try {
+          // Desenhar frame atual
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0);
 
-        // Fazer previsão
-        const input = tf.tensor2d([[r / 255, g / 255, b / 255]]);
-        const output = model.predict(input) as tf.Tensor;
-        const predictionIndex = output.argMax(-1).dataSync()[0];
-        setPrediction(COLOR_DATASET[predictionIndex].label);
+          // Capturar pixel do centro
+          const centerX = Math.floor(canvas.width / 2);
+          const centerY = Math.floor(canvas.height / 2);
+          const imageData = ctx.getImageData(centerX, centerY, 1, 1);
+          const data = Array.from(imageData.data);
+          const [r, g, b] = data;
 
-        // Limpar tensores
-        input.dispose();
-        output.dispose();
+          // Validar se os valores RGB são válidos
+          if (r === undefined || g === undefined || b === undefined) {
+            return;
+          }
+
+          setCurrentRGB({ r, g, b });
+
+          // Fazer previsão
+          const input = tf.tensor2d([[r / 255, g / 255, b / 255]]);
+          const output = model.predict(input) as tf.Tensor;
+          const predictionIndex = output.argMax(-1).dataSync()[0];
+          setPrediction(COLOR_DATASET[predictionIndex].label);
+
+          // Limpar tensores
+          input.dispose();
+          output.dispose();
+        } catch (err) {
+          addLog("❌ Erro captura: " + (err as Error).message);
+        }
       }
     }, 100);
 
@@ -333,7 +386,41 @@ export default function Home() {
             ? "Clique nas cores abaixo para testar a IA"
             : "Escolha um modo para começar"}
         </p>
+        
+        {/* Botão de Debug */}
+        <button
+          onClick={() => setShowDebug(!showDebug)}
+          className="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+        >
+          {showDebug ? "🔽 Ocultar Logs" : "🔼 Mostrar Logs de Debug"}
+        </button>
       </div>
+
+      {/* Debug Console */}
+      {showDebug && (
+        <div className="w-full max-w-2xl mb-6 bg-black/90 border-2 border-[#00d9ff] rounded-lg p-4 max-h-64 overflow-y-auto">
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-[#00d9ff] font-semibold">📋 Logs de Debug</h3>
+            <button
+              onClick={() => setDebugLogs([])}
+              className="text-xs px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded"
+            >
+              Limpar
+            </button>
+          </div>
+          <div className="font-mono text-xs text-green-400 space-y-1">
+            {debugLogs.length === 0 ? (
+              <p className="text-gray-500">Nenhum log ainda...</p>
+            ) : (
+              debugLogs.map((log, index) => (
+                <div key={index} className="border-b border-gray-800 pb-1">
+                  {log}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Error Alert */}
       {error && (
