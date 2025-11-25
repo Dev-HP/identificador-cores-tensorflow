@@ -100,6 +100,12 @@ export default function Home() {
   async function startCamera() {
     try {
       setError("");
+      console.log("🎥 Iniciando processo de acesso à câmera...");
+
+      // Verificar se o navegador suporta getUserMedia
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Seu navegador não suporta acesso à câmera");
+      }
 
       // Configurações em ordem de prioridade (melhor para pior)
       const videoConfigs = [
@@ -143,6 +149,7 @@ export default function Home() {
             video: config.constraints
           });
           console.log(`✅ Câmera acessada com sucesso: ${config.name}`);
+          console.log("Stream tracks:", stream.getTracks());
           break; // Sucesso, sair do loop
         } catch (err) {
           console.warn(`⚠️ Falha com ${config.name}:`, (err as Error).name);
@@ -158,26 +165,44 @@ export default function Home() {
 
       // Configurar stream no elemento de vídeo
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('autoplay', '');
-        videoRef.current.setAttribute('playsinline', '');
-        videoRef.current.muted = true;
+        console.log("📹 Configurando elemento de vídeo...");
+        const video = videoRef.current;
+        
+        video.srcObject = stream;
+        video.muted = true;
+        video.playsInline = true;
+        video.autoplay = true;
 
-        // Ativar interface imediatamente
+        // Ativar interface imediatamente para mostrar o container
         setIsCameraActive(true);
         setIsDemoMode(false);
         setError("");
 
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current
-            ?.play()
-            .catch((playErr) => {
-              console.error("❌ Erro ao reproduzir vídeo:", playErr);
-              setError(
-                "Erro ao iniciar visualização da câmera. Tente o modo demo."
-              );
-            });
+        // Aguardar metadados carregarem
+        video.onloadedmetadata = async () => {
+          try {
+            console.log("📊 Metadados carregados. Dimensões:", video.videoWidth, "x", video.videoHeight);
+            await video.play();
+            console.log("✅ Vídeo reproduzindo com sucesso");
+          } catch (playErr) {
+            console.error("❌ Erro ao reproduzir vídeo:", playErr);
+            setError(
+              "Erro ao iniciar visualização da câmera. Tente o modo demo."
+            );
+          }
         };
+
+        // Fallback: tentar reproduzir após um pequeno delay
+        setTimeout(async () => {
+          try {
+            if (video.paused) {
+              console.log("⚠️ Vídeo pausado, tentando reproduzir...");
+              await video.play();
+            }
+          } catch (e) {
+            console.error("Erro no fallback de reprodução:", e);
+          }
+        }, 500);
       }
     } catch (err) {
       const error = err as Error;
