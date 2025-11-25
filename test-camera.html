@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Câmera</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0a1628;
+            color: white;
+        }
+        video {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            border: 2px solid #00d9ff;
+            border-radius: 8px;
+            background: black;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #00d9ff;
+            color: #0a1628;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #00b8d4;
+        }
+        #status {
+            margin: 20px 0;
+            padding: 10px;
+            background: rgba(0, 217, 255, 0.1);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎥 Teste de Câmera</h1>
+    <div id="status">Status: Aguardando...</div>
+    
+    <button onclick="startCamera()">Iniciar Câmera</button>
+    <button onclick="stopCamera()">Parar Câmera</button>
+    
+    <div style="margin-top: 20px;">
+        <video id="video" autoplay playsinline muted></video>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const status = document.getElementById('status');
+        let stream = null;
+
+        async function startCamera() {
+            try {
+                status.textContent = 'Status: Solicitando acesso à câmera...';
+                console.log('🎥 Iniciando câmera...');
+
+                // Solicitar acesso à câmera
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                });
+
+                console.log('✅ Stream obtido:', stream);
+                console.log('Tracks:', stream.getTracks());
+
+                // Configurar vídeo
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    console.log('📊 Metadados carregados');
+                    console.log('Dimensões:', video.videoWidth, 'x', video.videoHeight);
+                    status.textContent = `Status: Câmera ativa (${video.videoWidth}x${video.videoHeight})`;
+                };
+
+                video.onplay = () => {
+                    console.log('▶️ Vídeo reproduzindo');
+                };
+
+                // Tentar reproduzir
+                await video.play();
+                console.log('✅ Play() executado com sucesso');
+
+            } catch (error) {
+                console.error('❌ Erro:', error);
+                status.textContent = `Status: Erro - ${error.message}`;
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => {
+                    track.stop();
+                    console.log('🛑 Track parado:', track.label);
+                });
+                video.srcObject = null;
+                status.textContent = 'Status: Câmera desligada';
+            }
+        }
+    </script>
+</body>
+</html>
