@@ -40,6 +40,7 @@ Acesse: `http://localhost:3000`
 - ✅ Sistema de fallback em cascata para acesso à câmera
 - ✅ Mensagens de erro específicas por tipo
 - ✅ Logs detalhados para diagnóstico
+- ✅ Console de debug visual na interface
 
 ## 📝 Notas
 
