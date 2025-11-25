@@ -10,8 +10,8 @@ const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(
 
 export default defineConfig({
   plugins,
-  // Use base path from env or default to root
-  base: process.env.GITHUB_PAGES ? '/demo3_identificador_cores/' : '/',
+  // Use base path for GitHub Pages, root for Vercel/local
+  base: process.env.GITHUB_ACTIONS ? '/identificador-cores-tensorflow/' : '/',
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
